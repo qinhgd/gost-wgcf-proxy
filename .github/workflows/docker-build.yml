@@ -1,1 +1,84 @@
-1
+# Workflow name
+name: Build and Release WGCF-GOST Image
+
+# Trigger: This workflow runs automatically ONLY when you create a new release.
+on:
+  release:
+    types: [created]
+
+# Permissions: Grant the necessary permissions for the workflow to write packages and releases.
+permissions:
+  contents: write
+  packages: write
+
+# Job definition
+jobs:
+  build-and-release:
+    # Environment: Use the latest version of Ubuntu for the build server.
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout repository
+      # Downloads your repository's code (Dockerfile, entry.sh, etc.) into the runner.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Log in to GitHub Container Registry (GHCR)
+      # Uses a temporary token to securely log in to GHCR, so it can push the image.
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Step 3: Set up QEMU
+      # This is necessary to build an arm64 image on GitHub's x86 servers.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # Step 4: Set up Docker Buildx
+      # Initializes the advanced Docker builder.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Step 5: Extract metadata for Docker
+      # Automatically generates image tags (e.g., :latest, :v1.2.0) based on the release tag.
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+
+      # Step 6: Build and Push Docker image to GHCR
+      # This builds your arm64 image and pushes it to your personal GHCR.
+      - name: Build and Push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          # IMPORTANT: Specifies your Dockerfile by its exact name.
+          file: ./Dockerfile.alpine
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      # Step 7: Build and Export Docker image as .tar file
+      # This re-builds the image (leveraging cache) and saves it as a local .tar file.
+      - name: Export Docker image as .tar
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.alpine
+          platforms: linux/arm64
+          # This tells Docker to save the output as a tarball instead of pushing.
+          outputs: type=docker,dest=./wgcf-gost-arm64.tar
+          # Tagging here helps with build cache.
+          tags: ghcr.io/${{ github.repository }}:latest-tar
+
+      # Step 8: Upload .tar file to the GitHub Release
+      # Attaches the wgcf-gost-arm64.tar file to the release you just created.
+      - name: Upload Docker image to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./wgcf-gost-arm64.tar
