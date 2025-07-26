@@ -69,7 +69,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile
+          file: ./Dockerfile.alpine
           platforms: linux/arm64
           # This tells Docker to save the output as a tarball instead of pushing.
           outputs: type=docker,dest=./wgcf-gost-arm64.tar
