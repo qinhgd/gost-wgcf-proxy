@@ -1,0 +1,36 @@
+# 最终版 Dockerfile: arm64 专用, 完全自包含
+
+FROM alpine:3.17
+
+# 安装基础依赖
+RUN apk update -f \
+  && apk --no-cache add -f \
+  curl ca-certificates \
+  iproute2 net-tools iptables \
+  wireguard-tools openresolv tar \
+  && rm -rf /var/cache/apk/*
+
+# --- GOST 安装 (从本地 arm64 文件) ---
+COPY gost-linux-arm64.tar.gz /tmp/gost.tar.gz
+RUN set -ex \
+    && cd /tmp \
+    && tar -xf gost.tar.gz \
+    && mv gost /usr/local/bin/gost \
+    && chmod +x /usr/local/bin/gost \
+    && rm -rf /tmp/*
+
+# --- WARP 工具安装 (从本地 arm64 文件) ---
+# 简化：直接复制到目标位置并授权
+COPY warp-arm64 /usr/local/bin/warp
+RUN chmod +x /usr/local/bin/warp
+
+# --- WGCF 安装 (从网络) ---
+# 脚本会自动识别 arm64 架构
+RUN curl -fsSL git.io/wgcf.sh | bash
+
+# --- 最终设置 ---
+WORKDIR /wgcf
+# 无 VOLUME 指令，实现非持久化
+COPY entry.sh /entry.sh
+RUN chmod +x /entry.sh
+ENTRYPOINT ["/entry.sh"]
